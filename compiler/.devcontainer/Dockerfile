@@ -1,10 +1,10 @@
-# We use Ubuntu 25.04 as our base, since we need more recent packages for LLVM 21
+# We use Ubuntu 25.04 as our base, since we need more recent packages for LLVM 22
 FROM ubuntu:25.04
 
 # LLVM major version that will be installed
 # We specify the MAJOR version only, so we can receive backwards compatible updates
 # For details, see here: https://semver.org/
-ARG LLVM_VERSION="21"
+ARG LLVM_VERSION="22"
 
 # Rust MINOR version that will be installed
 # We specify the MINOR version only, so we can receive backwards compatible bug fixes
