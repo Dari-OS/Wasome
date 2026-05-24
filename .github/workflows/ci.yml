@@ -56,24 +56,10 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: bash
         run: |
-          mkdir -p fake-bin
-          cat << 'EOF' > fake-llvm-config.rs
-          fn main() {
-              let args: Vec<String> = std::env::args().collect();
-              if args.iter().any(|a| a == "--version") {
-                  println!("21.1.8");
-                  return;
-              }
-              let status = std::process::Command::new("C:\\llvm\\bin\\llvm-config.exe").args(&args[1..]).status().unwrap();
-              std::process::exit(status.code().unwrap_or(1));
-          }
-          EOF
-          rustc fake-llvm-config.rs -o fake-bin/llvm-config.exe
-          echo "LLVM_SYS_221_PREFIX=$PWD/fake-bin" >> $GITHUB_ENV
+          echo "LLVM_SYS_221_PREFIX=C:\llvm" >> $GITHUB_ENV
           echo "LLVM_SYS_221_PREFER_DYNAMIC=1" >> $GITHUB_ENV
           echo "C:\llvm\bin" >> $GITHUB_PATH
 
-      # ── macOS ─────────────────────────────────────────────────────────────
       - name: Install LLVM 22 and LLD (macOS)
         if: matrix.os == 'macos-26'
         run: brew install llvm@22 lld
