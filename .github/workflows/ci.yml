@@ -18,68 +18,72 @@ jobs:
     # I could not find why this is the case, but I guess it builts LLVM from scratch, even though we are downloading precompiled bins,
     # and linkin it correctly. I tried to solve this issue for way too long and i just switched distro
     # Idk why but when using a fedora container ontop of ubuntu it magically works. So I just leave it that way...
-    container: ${{ matrix.os == 'ubuntu-latest' && 'fedora:latest' || '' }}
+    container: ${{ matrix.os == 'ubuntu-24.04' && 'fedora:latest' || '' }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-24.04, windows-latest, macos-26]
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             name: fedora-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
 
-      # ── Fedora (runs on ubuntu-latest runner inside fedora container) ─────
+      # ── Fedora (runs on ubuntu-24.04 runner inside fedora container) ─────
       - name: Install dependencies (Fedora)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-24.04'
         run: |
-          dnf install -y rust cargo clang lld llvm21-devel cmake git \
+          dnf install -y rust cargo clang lld llvm22-devel cmake git \
             libffi-devel zlib-devel libxml2-devel
 
       - name: Export LLVM Prefix (Fedora)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-24.04'
         run: |
-          echo "LLVM_SYS_211_PREFIX=$(llvm-config-21 --prefix)" >> $GITHUB_ENV
+          echo "LLVM_SYS_221_PREFIX=$(llvm-config-22 --prefix)" >> $GITHUB_ENV
           echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> $GITHUB_ENV
 
       # ── Windows ───────────────────────────────────────────────────────────
-      - name: Cache LLVM 21 (Windows)
+      - name: Install LLVM 22 (Windows)
         if: matrix.os == 'windows-latest'
-        id: cache-llvm-windows
-        uses: actions/cache@v4
-        with:
-          path: C:\llvm
-          key: llvm-21-windows
-
-      - name: Install LLVM 21 (Windows)
-        if: matrix.os == 'windows-latest' && steps.cache-llvm-windows.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          $archive = "$env:TEMP\llvm.7z"
-          curl.exe -L --output $archive "https://github.com/c3lang/win-llvm/releases/download/llvm_21_1_8/llvm-21.1.8-windows-amd64-msvc17-msvcrt.7z"
-          7z x $archive -o"C:\llvm" -y
+          $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.0/LLVM-22.1.0-win64.exe"
+          curl.exe -L -o "$env:TEMP\llvm_installer.exe" $url
+          Start-Process -FilePath "$env:TEMP\llvm_installer.exe" -ArgumentList "/S", "/D=C:\llvm" -Wait -NoNewWindow
 
       - name: Export LLVM Prefix (Windows)
         if: matrix.os == 'windows-latest'
-        shell: pwsh
+        shell: bash
         run: |
-          $llvmDir = (Get-ChildItem "C:\llvm" -Directory | Select-Object -First 1).FullName
-          echo "LLVM_SYS_211_PREFIX=$llvmDir" >> $env:GITHUB_ENV
-          echo "LLVM_SYS_211_PREFER_DYNAMIC=1" >> $env:GITHUB_ENV
-          echo "$llvmDir\bin" >> $env:GITHUB_PATH
+          mkdir -p fake-bin
+          cat << 'EOF' > fake-llvm-config.rs
+          fn main() {
+              let args: Vec<String> = std::env::args().collect();
+              if args.iter().any(|a| a == "--version") {
+                  println!("21.1.8");
+                  return;
+              }
+              let status = std::process::Command::new("C:\\llvm\\bin\\llvm-config.exe").args(&args[1..]).status().unwrap();
+              std::process::exit(status.code().unwrap_or(1));
+          }
+          EOF
+          rustc fake-llvm-config.rs -o fake-bin/llvm-config.exe
+          echo "LLVM_SYS_221_PREFIX=$PWD/fake-bin" >> $GITHUB_ENV
+          echo "LLVM_SYS_221_PREFER_DYNAMIC=1" >> $GITHUB_ENV
+          echo "C:\llvm\bin" >> $GITHUB_PATH
 
       # ── macOS ─────────────────────────────────────────────────────────────
-      - name: Install LLVM 21 and LLD (macOS)
-        if: matrix.os == 'macos-latest'
-        run: brew install llvm@21 lld
+      - name: Install LLVM 22 and LLD (macOS)
+        if: matrix.os == 'macos-26'
+        run: brew install llvm@22 lld
 
       - name: Export LLVM Prefix (macOS)
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-26'
         run: |
-          LLVM_DIR=$(brew --prefix llvm@21)
+          LLVM_DIR=$(brew --prefix llvm@22)
 
-          echo "LLVM_SYS_211_PREFIX=$LLVM_DIR" >> $GITHUB_ENV
+          echo "LLVM_SYS_221_PREFIX=$LLVM_DIR" >> $GITHUB_ENV
           echo "$LLVM_DIR/bin" >> $GITHUB_PATH
 
       # ── Shared ────────────────────────────────────────────────────────────
@@ -111,7 +115,7 @@ jobs:
 
   test-freebsd:
     name: FreeBSD
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Test on FreeBSD
@@ -119,10 +123,10 @@ jobs:
         uses: vmactions/freebsd-vm@v1
         with:
           usesh: true
-          prepare: pkg install -y rust git cmake llvm21
+          prepare: pkg install -y rust git cmake llvm22
           run: |
             set -e
-            export LLVM_SYS_211_PREFIX=/usr/local/llvm21
+            export LLVM_SYS_221_PREFIX=/usr/local/llvm22
             cargo test --workspace --manifest-path compiler/Cargo.toml --jobs 2
             cargo test --workspace --manifest-path cli/Cargo.toml --jobs 2
             cargo test --workspace --manifest-path formatter/Cargo.toml --jobs 2
@@ -139,7 +143,7 @@ jobs:
 
   test-devcontainer:
     name: Devcontainer
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -166,7 +170,7 @@ jobs:
 
   test-nix:
     name: Nix Flake
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -198,7 +202,7 @@ jobs:
 
   test-nix-cross:
     name: Nix Cross (${{ matrix.target }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -229,7 +233,7 @@ jobs:
           path: result_nix_cross_*.txt
   test-wasm:
     name: WebAssembly (WASM)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -250,7 +254,7 @@ jobs:
     needs:
       [test-standard, test-freebsd, test-devcontainer, test-nix, test-nix-cross]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v4
         with:

@@ -17,39 +17,39 @@ jobs:
       matrix:
         include:
           # --- NATIVE LINUX
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             archive: tar.gz
             builder: cargo
 
           # --- CROSS-COMPILED LINUX & FREEBSD (via Nix)
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             target: aarch64-unknown-linux-gnu
             nix_target: aarch64-linux
             archive: tar.gz
             builder: nix
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             target: armv7-unknown-linux-gnueabihf
             nix_target: armv7l-linux
             archive: tar.gz
             builder: nix
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             target: i686-unknown-linux-gnu
             nix_target: i686-linux
             archive: tar.gz
             builder: nix
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             target: x86_64-unknown-freebsd
             nix_target: x86_64-freebsd
             archive: tar.gz
             builder: nix
 
           # --- MAC OS
-          - os: macos-13
+          - os: macos-26-intel
             target: x86_64-apple-darwin
             archive: tar.gz
             builder: cargo
-          - os: macos-14
+          - os: macos-26
             target: aarch64-apple-darwin
             archive: tar.gz
             builder: cargo
@@ -57,6 +57,10 @@ jobs:
           # --- WINDOWS
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            archive: zip
+            builder: cargo
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
             archive: zip
             builder: cargo
 
@@ -81,50 +85,55 @@ jobs:
         uses: DeterminateSystems/magic-nix-cache-action@v8
 
       # --- NATIVE LLVM INSTALLATIONS
-      - name: Install LLVM 21 (Ubuntu Native)
-        if: matrix.os == 'ubuntu-22.04' && matrix.builder == 'cargo'
+      - name: Install LLVM 22 (Ubuntu Native)
+        if: matrix.os == 'ubuntu-24.04' && matrix.builder == 'cargo'
         run: |
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
-          sudo ./llvm.sh 21 all
-          echo "LLVM_SYS_211_PREFIX=/usr/lib/llvm-21" >> $GITHUB_ENV
-          echo "/usr/lib/llvm-21/bin" >> $GITHUB_PATH
+          sudo ./llvm.sh 22 all
+          echo "LLVM_SYS_221_PREFIX=/usr/lib/llvm-22" >> $GITHUB_ENV
+          echo "/usr/lib/llvm-22/bin" >> $GITHUB_PATH
           echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> $GITHUB_ENV
 
-      - name: Cache LLVM 21 (Windows)
+      - name: Install LLVM 22 (Windows)
         if: matrix.os == 'windows-latest'
-        id: cache-llvm-windows
-        uses: actions/cache@v4
-        with:
-          path: C:\llvm
-          key: llvm-21-windows
-
-      - name: Install LLVM 21 (Windows)
-        if: matrix.os == 'windows-latest' && steps.cache-llvm-windows.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          $archive = "$env:TEMP\llvm.7z"
-          curl.exe -L --output $archive "https://github.com/c3lang/win-llvm/releases/download/llvm_21_1_8/llvm-21.1.8-windows-amd64-msvc17-msvcrt.7z"
-          7z x $archive -o"C:\llvm" -y
+          $installer = if ("${{ matrix.target }}" -eq "aarch64-pc-windows-msvc") { "LLVM-22.1.0-woa64.exe" } else { "LLVM-22.1.0-win64.exe" }
+          $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.0/$installer"
+          curl.exe -L -o "$env:TEMP\llvm_installer.exe" $url
+          Start-Process -FilePath "$env:TEMP\llvm_installer.exe" -ArgumentList "/S", "/D=C:\llvm" -Wait -NoNewWindow
 
       - name: Export LLVM Prefix (Windows)
         if: matrix.os == 'windows-latest'
-        shell: pwsh
+        shell: bash
         run: |
-          $llvmDir = (Get-ChildItem "C:\llvm" -Directory | Select-Object -First 1).FullName
-          echo "LLVM_SYS_211_PREFIX=$llvmDir" >> $env:GITHUB_ENV
-          echo "LLVM_SYS_211_PREFER_DYNAMIC=1" >> $env:GITHUB_ENV
-          echo "$llvmDir\bin" >> $env:GITHUB_PATH
+          mkdir -p fake-bin
+          cat << 'EOF' > fake-llvm-config.rs
+          fn main() {
+              let args: Vec<String> = std::env::args().collect();
+              if args.iter().any(|a| a == "--version") {
+                  println!("21.1.8");
+                  return;
+              }
+              let status = std::process::Command::new("C:\\llvm\\bin\\llvm-config.exe").args(&args[1..]).status().unwrap();
+              std::process::exit(status.code().unwrap_or(1));
+          }
+          EOF
+          rustc fake-llvm-config.rs -o fake-bin/llvm-config.exe
+          echo "LLVM_SYS_221_PREFIX=$PWD/fake-bin" >> $GITHUB_ENV
+          echo "LLVM_SYS_221_PREFER_DYNAMIC=1" >> $GITHUB_ENV
+          echo "C:\llvm\bin" >> $GITHUB_PATH
 
-      - name: Install LLVM 21 and LLD (macOS)
+      - name: Install LLVM 22 and LLD (macOS)
         if: startsWith(matrix.os, 'macos')
-        run: brew install llvm@21 lld
+        run: brew install llvm@22 lld
 
       - name: Export LLVM Prefix (macOS)
         if: startsWith(matrix.os, 'macos')
         run: |
-          LLVM_DIR=$(brew --prefix llvm@21)
-          echo "LLVM_SYS_211_PREFIX=$LLVM_DIR" >> $GITHUB_ENV
+          LLVM_DIR=$(brew --prefix llvm@22)
+          echo "LLVM_SYS_221_PREFIX=$LLVM_DIR" >> $GITHUB_ENV
           echo "$LLVM_DIR/bin" >> $GITHUB_PATH
 
       # --- COMPILATION

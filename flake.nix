@@ -23,7 +23,7 @@
         targets = [ "wasm32-wasip1" ];
       };
       
-      llvmPkg = pkgs.llvmPackages_21;
+      llvmPkg = pkgs.llvmPackages_22;
 
       # Build the compiler for a given pkgs set (native or cross).
       # The key insight for cross builds: nativeBuildInputs run on the HOST,
@@ -31,7 +31,7 @@
       # TARGET, so we use crossPkgs there.
       makePackage = crossPkgs:
         let
-          crossLlvm = crossPkgs.llvmPackages_21;
+          crossLlvm = crossPkgs.llvmPackages_22;
         in
         crossPkgs.rustPlatform.buildRustPackage {
           pname = "wasome-compiler";
@@ -44,10 +44,10 @@
             mkdir -p $PWD/fake-bin/bin
             cat << 'WRAPPER' > $PWD/fake-bin/bin/llvm-config
             #!/bin/sh
-            ${pkgs.llvmPackages_21.libllvm.dev}/bin/llvm-config "$@" | sed "s|${pkgs.llvmPackages_21.libllvm.lib}|${crossLlvm.libllvm.lib}|g; s|${pkgs.llvmPackages_21.libllvm.dev}|${crossLlvm.libllvm.dev}|g"
+            ${pkgs.llvmPackages_22.libllvm.dev}/bin/llvm-config "$@" | sed "s|${pkgs.llvmPackages_22.libllvm.lib}|${crossLlvm.libllvm.lib}|g; s|${pkgs.llvmPackages_22.libllvm.dev}|${crossLlvm.libllvm.dev}|g"
             WRAPPER
             chmod +x $PWD/fake-bin/bin/llvm-config
-            export LLVM_SYS_211_PREFIX=$PWD/fake-bin
+            export LLVM_SYS_221_PREFIX=$PWD/fake-bin
           '';
 
           cargoLock = {
@@ -67,7 +67,7 @@
             libffi
             libxml2
             ncurses
-            llvmPackages_21.libllvm
+            llvmPackages_22.libllvm
           ];
 
           LIBCLANG_PATH = "${llvmPkg.libclang.lib}/lib";
@@ -111,7 +111,7 @@
       packages."x86_64-freebsd".default = makePackage crossTargets."x86_64-freebsd";
 
       devShells.${system}.default = pkgs.mkShell {
-        name = "llvm21-rust-latest";
+        name = "llvm22-rust-latest";
         nativeBuildInputs = with pkgs; [
           pkg-config
           cmake
@@ -131,7 +131,7 @@
           llvmPkg.clang
         ];
         shellHook = ''
-          export LLVM_SYS_211_PREFIX="${llvmPkg.libllvm.dev}"
+          export LLVM_SYS_221_PREFIX="${llvmPkg.libllvm.dev}"
           export LIBCLANG_PATH="${llvmPkg.libclang.lib}/lib"
           export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [
             pkgs.zlib
