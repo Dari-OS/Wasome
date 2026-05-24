@@ -1,5 +1,5 @@
 {
-  "name": "Rust 1.89.0 + LLVM 21",
+  "name": "Rust 1.89.0 + LLVM 22",
 
   "build": {
     "dockerfile": "Dockerfile",
